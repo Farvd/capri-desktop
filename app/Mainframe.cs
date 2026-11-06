@@ -3281,6 +3281,11 @@ namespace CapriDesktop
 
         internal string ProviderNote { get { return providerSheet == null || providerSheet.IsDisposed ? "" : providerSheet.Status; } }
 
+        internal int ProviderPresetChoices { get { return providerSheet == null || providerSheet.IsDisposed ? 0 : providerSheet.PresetChoices; } }
+        internal string ProviderPresetShown { get { return providerSheet == null || providerSheet.IsDisposed ? "" : providerSheet.PresetShown; } }
+        internal string ProviderAddressShown { get { return providerSheet == null || providerSheet.IsDisposed ? "" : providerSheet.AddressShown; } }
+        internal void PickProviderPreset(int index) { if (providerSheet != null && !providerSheet.IsDisposed) providerSheet.PickPreset(index); }
+
         internal bool ProviderMaskedAndEmpty { get { return providerSheet != null && !providerSheet.IsDisposed && providerSheet.MaskedAndEmpty; } }
 
         internal bool ProviderSavedEnabled { get { return providerSheet != null && !providerSheet.IsDisposed && providerSheet.SavedEnabled; } }
@@ -5113,6 +5118,8 @@ namespace CapriDesktop
             private readonly Entry key;
             private readonly Key saved;
             private readonly Label note;
+            private readonly ContextMenuStrip presets;
+            private readonly Key picker;
             internal readonly float Zoom;
 
             internal ProviderSheet(Mainframe owner, float zoom)
@@ -5137,13 +5144,24 @@ namespace CapriDesktop
                 close.Glyph = 2;
                 close.AccessibleName = "Close";
                 CancelButton = close;
-                Caption("OpenAI-compatible server or provider.", 52, 20, Faint);
-                Caption("Address", 80, 18, Rose);
+                Label provider = Caption("Provider", 52, 20, Rose);
+                provider.Bounds = new Rectangle(28, 52, 64, 20);       // narrow it: the Caption helper hard-codes width 328
+                presets = owner.Dropdown();
+                presets.Items.Add(Choice("Type an address", false, delegate { address.Box.Clear(); }));
+                foreach (ProviderPreset preset in Brain.ProviderPresets)
+                {
+                    ProviderPreset each = preset;
+                    presets.Items.Add(Choice(each.Name, false, delegate { address.Box.Text = each.Chat; }));
+                }
+                picker = Make("Any provider", 100, 52, 256, delegate { presets.Show(picker, new Point(0, picker.Height)); });
+                picker.Chevron = true;
+                picker.AccessibleName = "Provider";
+                Caption("Address, any OpenAI-compatible server or provider.", 80, 18, Rose);
                 address = Input(100, "http://localhost:1234/v1", "Provider base URL");
                 Caption("Key", 136, 18, Rose);
                 key = Input(156, "Optional. Blank means no key.", "Provider API key, optional");
                 key.Box.UseSystemPasswordChar = true;
-                address.Box.TextChanged += delegate { key.Box.Clear(); Kept(); };
+                address.Box.TextChanged += delegate { key.Box.Clear(); Kept(); UpdatePicker(); };
                 key.Box.TextChanged += delegate { Kept(); };
                 Caption("Keys go only to this address.\nThey stay encrypted on this computer.", 196, 36, Faint);
                 Key connect = Make("Connect", 28, 240, 104, delegate { Connect(); });
@@ -5179,6 +5197,13 @@ namespace CapriDesktop
                 saved.Enabled = kept.Length > 0 && kept == Brain.ServerAddress(address.Box.Text) && key.Box.Text.Length == 0;
             }
 
+            private void UpdatePicker()
+            {
+                if (picker == null) return;
+                ProviderPreset matched = Brain.Preset(address.Box.Text);
+                picker.Text = matched != null ? matched.Name : "Any provider";
+            }
+
             internal string Status { get { return note.Text; } }
 
             internal bool MaskedAndEmpty { get { return key.Box.UseSystemPasswordChar && key.Box.Text.Length == 0; } }
@@ -5196,6 +5221,15 @@ namespace CapriDesktop
             }
 
             internal void Type(string url, string secret) { address.Box.Text = url; key.Box.Text = secret; }
+
+            internal int PresetChoices { get { return presets.Items.Count; } }
+            internal string PresetShown { get { return picker.Text; } }
+            internal string AddressShown { get { return address.Box.Text; } }
+            internal void PickPreset(int index)
+            {
+                if (index < 0 || index >= presets.Items.Count) throw new ArgumentOutOfRangeException("index");
+                ((ToolStripMenuItem)presets.Items[index]).PerformClick();
+            }
 
             internal void Connect()
             {

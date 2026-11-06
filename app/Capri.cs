@@ -9008,7 +9008,7 @@ namespace CapriDesktop
                     string previous = preferences.BrainProvider, previousModel = preferences.ProviderModel;
                     bool previousOn = preferences.ProviderOn;
                     int previousTier = preferences.Tier;
-                    string model = found[0];
+                    string model = Brain.ProviderModel(address, found);
                     string savedAddress, savedKey;
                     if (SavedProvider(out savedAddress, out savedKey) && savedAddress == address && Array.IndexOf(found, previousModel) >= 0) model = previousModel;
                     preferences.BrainProvider = pair;
@@ -9061,7 +9061,7 @@ namespace CapriDesktop
                     if (listing != providerListing || preferences.Tier != 0 || brain.Remote != null || currentAddress != address || currentKey != key) return;
                     if (found == null || found.Length == 0) { mainframe.ProviderProblem(found == null ? "Can't reach your provider. Check the address and key." : "Your server lists no models. Load one in it first."); return; }
                     providerModels = found;
-                    if (Array.IndexOf(found, brain.Model) < 0) { ChooseProviderModel(address, found[0], found); if (Array.IndexOf(found, brain.Model) < 0) return; }
+                    if (Array.IndexOf(found, brain.Model) < 0) { ChooseProviderModel(address, Brain.ProviderModel(address, found), found); if (Array.IndexOf(found, brain.Model) < 0) return; }
                     mainframe.ShowProvider(address, key != null, brain.Model, found);
                 });
             });
@@ -10045,7 +10045,7 @@ namespace CapriDesktop
             ++cloudListing;
             key = (key ?? "").Trim();
             string kind = Cloud.KindOf(key);
-            if (kind == null) { TextProblem(key.StartsWith("sk-nous-", StringComparison.Ordinal) ? "Nous Portal keys aren't supported yet." : Brain.NotAKey, true); return; }
+            if (kind == null) { TextProblem(key.StartsWith("sk-nous-", StringComparison.Ordinal) ? "Nous Portal keys aren't supported yet." : Brain.OpenCodeKey(key) ? "OpenCode Go keys go in Mainframe > BRAIN > Provider." : Brain.NotAKey, true); return; }
             if (targetTier == 1 && !Cloud.MediumKind(kind)) { mainframe.OfferPaidText(key); return; }
             if (targetTier == 0) targetTier = kind == "nvidia" ? 1 : 2;
             ListCloud(key, true, targetTier);
@@ -25674,6 +25674,44 @@ namespace CapriDesktop
                 if (mainframe.ProviderNote != "That key doesn't work. Paste it on one line.") throw new Exception("A multiline provider key was accepted.");
                 if (Brain.ServerAddress("https://openrouter.ai/api/v1/") != "https://openrouter.ai/api" || Brain.ServerAddress("localhost:1234/v1/chat/completions") != "http://localhost:1234") throw new Exception("A provider base URL lost its path or version.");
                 checks.Add("PASS provider addresses reject other schemes, credentials, queries, fragments, spaces and backslashes; remote keys require HTTPS and one line");
+
+                ProviderPreset presetNamed = Brain.PresetNamed("OpenCode Go");
+                if (presetNamed == null || Brain.ProviderPresets.Count != 1) throw new Exception("The OpenCode Go provider preset is missing.");
+                if (mainframe.ProviderPresetChoices != 2 || mainframe.ProviderPresetShown != "Any provider") throw new Exception("The provider sheet did not offer its presets.");
+                mainframe.PickProviderPreset(1);
+                if (mainframe.ProviderPresetShown != "OpenCode Go" || mainframe.ProviderAddressShown != presetNamed.Chat) throw new Exception("Picking the OpenCode Go preset did not fill in its address.");
+                mainframe.PickProviderPreset(0);
+                if (mainframe.ProviderPresetShown != "Any provider" || mainframe.ProviderAddressShown.Length != 0) throw new Exception("Type an address did not clear the picked preset.");
+                checks.Add("PASS the provider panel offers OpenCode Go by name, fills in its address when it is picked, and clears it for a typed address");
+
+                ProviderPreset openCode = Brain.PresetNamed("OpenCode Go");
+                if (openCode == null) throw new Exception("The OpenCode Go provider preset is missing.");
+                string goChatWas = openCode.Chat, goModelsWas = openCode.Models, goModelWas = openCode.Model;
+                System.Collections.Generic.List<string> goAsked = new System.Collections.Generic.List<string>();
+                string goBase = serve(new[] { "{\"data\":[{\"id\":\"deepseek-v4-pro\"},{\"id\":\"deepseek-v4.1-flash\"},{\"id\":\"beam-free\"}]}", LocalReply("OpenCode Go answered."), "{\"data\":[{\"id\":\"deepseek-v4-pro\"},{\"id\":\"deepseek-v4.1-flash\"},{\"id\":\"beam-free\"}]}", LocalReply("OpenCode Go answered again.") }, goAsked, null, "");
+                try
+                {
+                    ConnectText("oc_sk_test_key");
+                    if (!mainframe.TextStatus.Contains("OpenCode Go keys go in Mainframe > BRAIN > Provider.")) throw new Exception("An OpenCode Go key in the tier key box did not point to the provider panel.");
+                    openCode.Chat = goBase + "/openai";
+                    openCode.Models = goBase;
+                    UseProvider(openCode.Chat, "oc_sk_test_key");
+                    WaitVoice(delegate { return brain.Server == openCode.Chat && mainframe.ProviderNote == "Provider connected."; }, "The OpenCode Go provider did not connect.");
+                    if (brain.Model != goModelWas) throw new Exception("OpenCode Go did not start on its own model.");
+                    if (providerModels == null || providerModels.Length != 2 || Array.IndexOf(providerModels, "beam-free") >= 0) throw new Exception("OpenCode Go listed a model only OpenCode itself serves.");
+                    if (goAsked.Count < 1 || !goAsked[0].StartsWith("GET /v1/models ", StringComparison.Ordinal)) throw new Exception("OpenCode Go listed its models at its chat address.");
+                    if (!goAsked[0].Contains("Authorization: Bearer oc_sk_test_key")) throw new Exception("OpenCode Go did not get its key.");
+                    if (head(brain.Server, brain.ServerKey, brain.Model).Ask("hello test") != "OpenCode Go answered.") throw new Exception("The OpenCode Go provider did not answer a chat.");
+                    if (goAsked.Count < 2 || !goAsked[1].StartsWith("POST /openai/v1/chat/completions ", StringComparison.Ordinal)) throw new Exception("OpenCode Go's chat did not go to its chat address.");
+                    // The address OpenCode's own docs give, where its models live, has to reach the same chat.
+                    UseProvider(openCode.Models, "oc_sk_test_key");
+                    WaitVoice(delegate { return brain.Server == openCode.Models && mainframe.ProviderNote == "Provider connected."; }, "The OpenCode Go provider did not connect by its models address.");
+                    if (brain.Model != goModelWas) throw new Exception("OpenCode Go did not start on its own model by its models address.");
+                    if (head(brain.Server, brain.ServerKey, brain.Model).Ask("hello test") != "OpenCode Go answered again.") throw new Exception("The OpenCode Go provider did not answer by its models address.");
+                    if (goAsked.Count < 4 || !goAsked[2].StartsWith("GET /v1/models ", StringComparison.Ordinal) || !goAsked[3].StartsWith("POST /openai/v1/chat/completions ", StringComparison.Ordinal)) throw new Exception("OpenCode Go's models address did not reach its chat address.");
+                }
+                finally { openCode.Chat = goChatWas; openCode.Models = goModelsWas; openCode.Model = goModelWas; }
+                checks.Add("PASS OpenCode Go lists its models at its own address, leaves out the free models only OpenCode serves, starts on DeepSeek V4.1 Flash and chats at its chat address");
 
                 System.Collections.Generic.List<string> a = new System.Collections.Generic.List<string>(), b = new System.Collections.Generic.List<string>();
                 ManualResetEvent refreshGate = new ManualResetEvent(true);

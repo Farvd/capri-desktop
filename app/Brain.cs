@@ -350,6 +350,18 @@ namespace CapriDesktop
         internal static bool MediumKind(string kind) { return kind == "nvidia" || kind == "google" || kind == "openrouter"; }
     }
 
+    // A provider she knows by name, so they don't have to look up its address: where it serves chat, where it lists its
+    // models when that isn't the same place, the model she starts on, and the end of the model ids she leaves out.
+    // OpenCode Go serves chat under /go/openai/v1 but lists its models under /go/v1, and its free models are only served
+    // inside OpenCode itself, so other clients get a 403 for them. The addresses are fields, not constants, so a test can
+    // point them at a fake server like the other providers' addresses.
+    internal sealed class ProviderPreset
+    {
+        internal readonly string Name;
+        internal string Chat, Models, Model, Skip;
+        internal ProviderPreset(string name, string chat, string models, string model, string skip) { Name = name; Chat = chat; Models = models; Model = model; Skip = skip; }
+    }
+
     internal sealed class BrainException : Exception
     {
         internal readonly bool Told;
@@ -377,6 +389,52 @@ namespace CapriDesktop
         internal static string Nvidia = "https://integrate.api.nvidia.com";
         internal static string Google = "https://generativelanguage.googleapis.com/v1beta/openai";
         internal static string OpenRouter = "https://openrouter.ai/api/v1";
+
+        // The providers she knows by name, so nobody has to look up their addresses.
+        internal static readonly List<ProviderPreset> ProviderPresets = new List<ProviderPreset>
+        {
+            new ProviderPreset("OpenCode Go", "https://opencode.ai/inference/go/openai", "https://opencode.ai/inference/go", "deepseek-v4.1-flash", "-free")
+        };
+
+        // The preset for an address they gave, or null when it's one they typed themselves. A provider's models may live
+        // somewhere else than its chat, so both its addresses find it. An address they typed with a trailing slash or a
+        // version on the end is the same provider, so it is matched too.
+        internal static ProviderPreset Preset(string address)
+        {
+            if (string.IsNullOrEmpty(address)) return null;
+            string normalized = ServerAddress(address);
+            foreach (ProviderPreset preset in ProviderPresets)
+                if (string.Equals(preset.Chat, address, StringComparison.OrdinalIgnoreCase) || string.Equals(preset.Models, address, StringComparison.OrdinalIgnoreCase)
+                    || normalized != null && (string.Equals(preset.Chat, normalized, StringComparison.OrdinalIgnoreCase) || string.Equals(preset.Models, normalized, StringComparison.OrdinalIgnoreCase))) return preset;
+            return null;
+        }
+
+        // Where a provider takes its chat, when they gave the address its models live at instead.
+        internal static string ChatAddress(string address)
+        {
+            ProviderPreset preset = Preset(address);
+            return preset == null ? address : preset.Chat;
+        }
+
+        // A preset by name, for the menus that name them.
+        internal static ProviderPreset PresetNamed(string name)
+        {
+            foreach (ProviderPreset preset in ProviderPresets) if (string.Equals(preset.Name, name, StringComparison.OrdinalIgnoreCase)) return preset;
+            return null;
+        }
+
+        // OpenCode Go's console keys, personal and service accounts alike, all start with oc_. They are not a cloud tier's
+        // keys, so they go in the provider panel, not the tier's key box.
+        internal static bool OpenCodeKey(string key) { return !string.IsNullOrEmpty(key) && key.StartsWith("oc_", StringComparison.Ordinal); }
+
+        // The model she starts on for a provider: its preset's, when it has one and the provider lists it, else the first.
+        internal static string ProviderModel(string address, IList<string> models)
+        {
+            if (models == null || models.Count == 0) return null;
+            ProviderPreset preset = Preset(address);
+            return preset != null && models.Contains(preset.Model) ? preset.Model : models[0];
+        }
+
         private static readonly string[] NvidiaPicks = { "nvidia/nemotron-3.5-super-vl-120b-a12b", "nvidia/nemotron-3.5-bolt-e4b", "openai/gpt-oss-20b", "meta/llama-3.2-11b-vision-instruct" };
         // Marked recommended at the top of an NVIDIA key's models: Nemotron Super, which sees screens, and Nemotron's reasoning model.
         private static readonly string[] NvidiaRecommended = { "nvidia/nemotron-3.5-super-vl-120b-a12b", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" };
@@ -1432,7 +1490,11 @@ namespace CapriDesktop
         internal static string[] ServerModels(string address, string key = null)
         {
             if (!string.IsNullOrEmpty(key) && !ServerKeySafe(address)) throw new BrainException("Use https for a provider elsewhere. A key over plain http isn't safe.", true);
-            HttpWebRequest request = Create(address + "/v1/models", 5000);
+            // A provider that lists its models somewhere else, like OpenCode Go, says where in its preset.
+            ProviderPreset preset = Preset(address);
+            string listing = preset == null ? address : preset.Models;
+            if (listing != address && !string.IsNullOrEmpty(key) && !ServerKeySafe(listing)) throw new BrainException("Use https for a provider elsewhere. A key over plain http isn't safe.", true);
+            HttpWebRequest request = Create(listing + "/v1/models", 5000);
             bool signed = !string.IsNullOrEmpty(key);
             if (signed) SignServer(request, key);
             try
@@ -1444,6 +1506,8 @@ namespace CapriDesktop
                     CloudModelPage page = (CloudModelPage)new DataContractJsonSerializer(typeof(CloudModelPage)).ReadObject(body);
                     List<string> names = new List<string>();
                     if (page != null && page.Models != null) foreach (CloudModel model in page.Models) if (model != null && !string.IsNullOrEmpty(model.Id) && model.Id.IndexOf("embed", StringComparison.OrdinalIgnoreCase) < 0) names.Add(model.Id);
+                    // The models only OpenCode itself serves, which turn every other client away.
+                    if (preset != null && !string.IsNullOrEmpty(preset.Skip)) names.RemoveAll(name => name.EndsWith(preset.Skip, StringComparison.OrdinalIgnoreCase));
                     return names.ToArray();
                 }
             }
@@ -2963,12 +3027,15 @@ namespace CapriDesktop
         {
             if (!string.IsNullOrEmpty(key) && !ServerKeySafe(address)) throw new BrainException("Use https for a provider elsewhere. A key over plain http isn't safe.", true);
             EnsureServer(address, key);
+            // A provider whose models live somewhere else than its chat, like OpenCode Go, says where its chat is.
+            string chat = ChatAddress(address);
+            if (chat != address && !string.IsNullOrEmpty(key) && !ServerKeySafe(chat)) throw new BrainException("Use https for a provider elsewhere. A key over plain http isn't safe.", true);
             string thinking = address + "|" + model;
             string listed = tools ? openAiTools ?? Hands.Tools : null;
             CompletionRequest asking = new CompletionRequest { Messages = messages.ToArray(), Limit = ReplyLimit(thinker == thinking ? limit + 2048 : limit, job || routing) };
             if (named != null) asking.Model = named;
             Action<HttpWebRequest> sign = string.IsNullOrEmpty(key) ? null : new Action<HttpWebRequest>(delegate(HttpWebRequest request) { SignServer(request, key); });
-            CompletionReply reply = Send<CompletionReply>(address + "/v1/chat/completions", asking, 180000, listed, sign, parts, ticket, key);
+            CompletionReply reply = Send<CompletionReply>(chat + "/v1/chat/completions", asking, 180000, listed, sign, parts, ticket, key);
             CompletionChoice choice = reply.Choices != null && reply.Choices.Length > 0 ? reply.Choices[0] : null;
             CompletionMessage message = choice != null ? choice.Message : null;
             if (thinker != thinking && ReplyLimit(limit + 2048, job || routing) > asking.Limit && choice != null && choice.Stopped == "length" && message != null && (!string.IsNullOrEmpty(message.Thinking) || !string.IsNullOrEmpty(message.Reasoning) || (message.Content ?? "").IndexOf("<think>", StringComparison.OrdinalIgnoreCase) >= 0))
@@ -2976,7 +3043,7 @@ namespace CapriDesktop
                 thinker = thinking;
                 asking.Limit = ReplyLimit(limit + 2048, job || routing);
                 EnsureServer(address, key);
-                reply = Send<CompletionReply>(address + "/v1/chat/completions", asking, 180000, listed, sign, parts, ticket, key);
+                reply = Send<CompletionReply>(chat + "/v1/chat/completions", asking, 180000, listed, sign, parts, ticket, key);
                 choice = reply.Choices != null && reply.Choices.Length > 0 ? reply.Choices[0] : null;
             }
             CompletionMessage cut = choice != null ? choice.Message : null;
@@ -2985,7 +3052,7 @@ namespace CapriDesktop
                 {
                     EnsureServer(address, key);
                     asking.Limit = room;
-                    return Send<CompletionReply>(address + "/v1/chat/completions", asking, Math.Max(180000, room * 150), listed, sign, parts, ticket, key);
+                    return Send<CompletionReply>(chat + "/v1/chat/completions", asking, Math.Max(180000, room * 150), listed, sign, parts, ticket, key);
                 });
             if (routing && Stopped(reply)) return CutShort(Said(reply), Whole(reply), calls);
             return Read(reply, calls);

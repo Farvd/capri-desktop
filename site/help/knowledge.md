@@ -711,6 +711,7 @@ Windows can use any OpenAI-compatible server or provider. Right-click her > Open
 
 - LM Studio: start its local server with a model loaded. Enter its address, such as http://localhost:1234/v1. Leave Key blank if your server needs no key. Press Connect, then choose its model in BRAIN's model menu.
 - OpenRouter: enter https://openrouter.ai/api/v1 in Address, paste your OpenRouter API key into Key and press Connect. Choose a model from BRAIN's model menu. You can also use the existing MEDIUM INTELLIGENCE key row for OpenRouter's :free models or MAX INTELLIGENCE for its full list.
+- OpenCode Go: pick OpenCode Go from the Provider dropdown instead of typing its address. Paste your oc_sk_ key from https://opencode.ai/console and press Connect. She starts on deepseek-v4.1-flash, which can see the screen, and the other Go models stay in BRAIN's model menu.
 - Another provider: enter its OpenAI-compatible base address and its key, if needed. A provider elsewhere needs https:// when you send a key.
 
 The address and key stay encrypted on this computer. Keys go only to the address you set. Use saved reconnects with the saved address and key. Connect with a blank Key uses no key. Forget removes the saved provider from Capri. Changing Address clears the key box, so set the address before pasting a key. Put keys in this window, never in chat.
@@ -1741,7 +1742,7 @@ Code/Husk Mode works here too: Advanced Settings > BRAIN > Code/Husk Mode. Her h
 - Chatting by typing: hover her and press the pencil, or right-click her > Talk to her
 - Her brain through Ollama, or through a free NVIDIA key (or an OpenAI, Claude or DeepSeek key) with no Ollama needed
 - Her ElevenLabs voice for spoken replies, or a voice server on your own computer (0.7.8 and newer): right-click her > Settings > Voice > Provider picks ElevenLabs, a local server or Off
-- Any local model (0.7.8 and newer): right-click her > Brain > Download a model (Ollama or Hugging Face)... takes an Ollama name or a Hugging Face GGUF link, and Use my own server (OpenAI API)... uses LM Studio, llama-server or another server like them. Use my own provider with a key (OpenAI API)... points her at any OpenAI-compatible provider elsewhere; its key stays in a file only your account can read
+- Any local model (0.7.8 and newer): right-click her > Brain > Download a model (Ollama or Hugging Face)... takes an Ollama name or a Hugging Face GGUF link, and Use my own server (OpenAI API)... uses LM Studio, llama-server or another server like them. Use my own provider with a key (OpenAI API)... points her at any OpenAI-compatible provider elsewhere; its key stays in a file only your account can read. Use OpenCode Go with a key (OpenAI API)... points her at OpenCode Go: paste your oc_sk_ key from https://opencode.ai/console and press Enter, and she starts on deepseek-v4.1-flash, which can see the screen
 - Mouse and keyboard jobs on Linux (0.7.8 and newer): right-click her > Settings > Security > Set up mouse and keyboard... copies the one command they need. Run it in a terminal. Grab the mouse to stop her
 - Hyprland (0.7.8 and newer): she sits on windows and finds your mouse there, like on X11
 - Remember and forget, nickname, language
@@ -1941,7 +1942,7 @@ If her settings file itself can't be read, like a damaged settings.json, she sta
 - Whole PC freezes: quit Capri and see if it stops. Try the free NVIDIA key instead of the built-in brain, and tell us in the Discord with Copy error details, your graphics card, RAM and which brain. (One PC that froze also froze without Capri.)
 - NVIDIA asks for a phone number: that's NVIDIA's sign-up check. It's needed to make the free key.
 
-- Local server missing from the model menu: start it with a model loaded, select NORMAL, then press Refresh. Check Settings > BRAIN > Local server address if you use a different port. This address must be on this PC. For an OpenAI-compatible provider elsewhere, use Brain > Use my own provider with a key (OpenAI API)....
+- Local server missing from the model menu: start it with a model loaded, select NORMAL, then press Refresh. Check Settings > BRAIN > Local server address if you use a different port. This address must be on this PC. For an OpenAI-compatible provider elsewhere, use Brain > Use my own provider with a key (OpenAI API).... An OpenCode Go key is not a tier key, so paste it in Mainframe > BRAIN > Provider, not in a MEDIUM or MAX key box.
 - Memory size doesn't change your local server: it controls Ollama and her built-in brain only. Change the other server's context size in that server.
 - Max reply is high but answers are still short: set Settings > BRAIN > Replies to Long and ask for more detail. Max reply gives her room; it doesn't ask her to use all of it.
 

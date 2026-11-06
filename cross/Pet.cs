@@ -2997,6 +2997,9 @@ namespace CapriDesktop
             MenuItem provider = new MenuItem { Header = "Use my own provider with a key (OpenAI API)..." };
             provider.Click += Guarded(delegate { AskProvider(); });
             brainMenu.Items.Add(provider);
+            MenuItem openCode = new MenuItem { Header = "Use OpenCode Go with a key (OpenAI API)..." };
+            openCode.Click += Guarded(delegate { ProviderPreset preset = Brain.PresetNamed("OpenCode Go"); if (preset != null) AskProviderKeyFor(preset.Chat); });
+            brainMenu.Items.Add(openCode);
             // A cloud key thinks for her instead, for PCs that can't run Ollama's models well. NVIDIA's is free.
             brainMenu.Items.Add(new Separator());
             MenuItem free = new MenuItem { Header = "Get a free NVIDIA key" };
@@ -3143,7 +3146,7 @@ namespace CapriDesktop
                     Brain.SetServer(server, key);
                     Saved.BrainServer = server;
                     WriteSecret(ServerKeyFile, null, "provider key");
-                    string model = Array.IndexOf(found, Saved.ServerModel) >= 0 ? Saved.ServerModel : found[0];
+                    string model = Array.IndexOf(found, Saved.ServerModel) >= 0 ? Saved.ServerModel : Brain.ProviderModel(server, found);
                     if (Brain.Remote == null) Brain.Model = model;
                     Saved.ServerModel = model;
                     Save();
